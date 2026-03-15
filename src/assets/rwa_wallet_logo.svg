@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="120" y1="80" x2="904" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#132B49"/>
+      <stop offset="100%" stop-color="#0F2038"/>
+    </linearGradient>
+    <linearGradient id="assetGrad" x1="320" y1="300" x2="704" y2="704" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2ED3B7"/>
+      <stop offset="100%" stop-color="#7B4DFF"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="250" y1="250" x2="774" y2="774" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B4040"/>
+      <stop offset="100%" stop-color="#6F3131"/>
+    </linearGradient>
+    <filter id="softGlow" x="150" y="150" width="724" height="724" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="24" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="url(#bgGrad)"/>
+  <circle cx="330" cy="260" r="180" fill="#FFFFFF" opacity="0.03"/>
+  <circle cx="770" cy="760" r="220" fill="#FFFFFF" opacity="0.02"/>
+
+  <circle cx="512" cy="512" r="290" fill="none" stroke="#EAEAEA" stroke-width="28"/>
+  <circle cx="512" cy="512" r="250" fill="none" stroke="#EAEAEA" stroke-opacity="0.18" stroke-width="8"/>
+
+  <g filter="url(#softGlow)">
+    <rect x="368" y="388" width="72" height="248" rx="24" fill="url(#assetGrad)"/>
+    <rect x="476" y="332" width="72" height="304" rx="24" fill="url(#assetGrad)"/>
+    <rect x="584" y="420" width="72" height="216" rx="24" fill="url(#assetGrad)"/>
+  </g>
+
+  <circle cx="512" cy="512" r="96" fill="#EAEAEA"/>
+  <circle cx="512" cy="512" r="70" fill="url(#bgGrad)"/>
+  <circle cx="512" cy="512" r="14" fill="#EAEAEA"/>
+
+  <rect x="502" y="430" width="20" height="56" rx="10" fill="#EAEAEA"/>
+  <rect x="502" y="538" width="20" height="56" rx="10" fill="#EAEAEA"/>
+  <rect x="430" y="502" width="56" height="20" rx="10" fill="#EAEAEA"/>
+  <rect x="538" y="502" width="56" height="20" rx="10" fill="#EAEAEA"/>
+
+  <path d="M710 358C755 395 784 451 784 514C784 625 700 716 594 728"
+        stroke="url(#accentGrad)" stroke-width="22" stroke-linecap="round" opacity="0.9"/>
+</svg>
