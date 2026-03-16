@@ -146,18 +146,12 @@ function buildFallbackHistory(asset: Asset, range: HistoryRange): HistoryPoint[]
 
 async function fetchYahooHistory(asset: Asset, range: HistoryRange): Promise<HistoryPoint[]> {
   const symbol = asset.marketSymbol ?? quoteSymbolsByAssetId[asset.id];
-  const historyConfig = historyConfigByRange[range];
 
   if (!symbol) {
     return [];
   }
 
-  const params = new URLSearchParams({
-    range: historyConfig.yahooRange,
-    interval: historyConfig.yahooInterval,
-    includePrePost: 'false',
-    events: 'div,splits',
-  });
+  const historyConfig = historyConfigByRange[range];
   const response = await fetch(
     `/api/market/chart?${new URLSearchParams({
       symbol,
@@ -257,7 +251,7 @@ export async function fetchLiveXStockPrices(baseAssets: Asset[]) {
 }
 
 export async function fetchXStockHistory(asset: Asset, range: HistoryRange): Promise<HistoryPoint[]> {
-  if (asset.category === 'xstocks') {
+  if (asset.marketSymbol ?? quoteSymbolsByAssetId[asset.id]) {
     try {
       const yahooPoints = await fetchYahooHistory(asset, range);
 
@@ -265,7 +259,7 @@ export async function fetchXStockHistory(asset: Asset, range: HistoryRange): Pro
         return yahooPoints;
       }
     } catch {
-      // Fall through to onchain history and then a flat fallback.
+      // Fall through to onchain history and then a seeded fallback.
     }
   }
 

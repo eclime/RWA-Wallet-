@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import {
   ArrowLeftRight,
@@ -226,6 +226,11 @@ export default function App() {
   const [pairYield, setPairYield] = useState(0);
   const [preferredStableSymbol, setPreferredStableSymbol] = useState<'USDT' | 'USDC'>('USDT');
   const wallet = useEmbeddedSolanaWallet();
+  const marketAssetsRef = useRef(marketAssets);
+
+  useEffect(() => {
+    marketAssetsRef.current = marketAssets;
+  }, [marketAssets]);
 
   const selectedAsset =
     marketAssets.find((asset) => asset.id === selectedAssetId) ?? marketAssets[0];
@@ -381,6 +386,11 @@ export default function App() {
         .sort((left, right) => right.value - left.value),
     [marketAssets],
   );
+  const holdingsDailyChangeValue = useMemo(
+    () =>
+      heldAssets.reduce((total, asset) => total + asset.value * (asset.change24h / 100), 0),
+    [heldAssets],
+  );
   const sendableAssets = useMemo(() => heldAssets, [heldAssets]);
   const selectedSendAsset =
     sendableAssets.find((asset) => asset.id === sendAssetId) ??
@@ -389,6 +399,13 @@ export default function App() {
     marketAssets[0];
   const publicKey = wallet.solanaWallet?.address ?? 'Connect wallet to reveal public key';
   const shortPublicKey = shortenAddress(wallet.solanaWallet?.address);
+  const walletHistoryStats = useMemo(() => {
+    const incoming = walletHistoryItems.filter((item) => item.kind === 'receive').length;
+    const outgoing = walletHistoryItems.filter((item) => item.kind === 'send').length;
+    const swaps = walletHistoryItems.filter((item) => item.kind === 'swap').length;
+
+    return { incoming, outgoing, swaps };
+  }, [walletHistoryItems]);
   const yieldPools = yieldPoolSeeds
     .map((pool) => {
       const baseAsset = marketAssets.find((asset) => asset.symbol === pool.base);
@@ -586,7 +603,10 @@ export default function App() {
       }
 
       try {
-        const assetsWithBalances = await applyStableWalletBalances(wallet.solanaWallet.address, marketAssets);
+        const assetsWithBalances = await applyStableWalletBalances(
+          wallet.solanaWallet.address,
+          marketAssetsRef.current,
+        );
 
         if (!ignore) {
           setMarketAssets(assetsWithBalances);
@@ -1589,7 +1609,7 @@ export default function App() {
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">Wallet</p>
-                <h3>Portfolio holdings and public key</h3>
+                <h3>Holdings</h3>
               </div>
             </div>
             <div className="wallet-overview">
@@ -1645,6 +1665,20 @@ export default function App() {
                     <span>Incoming transfers, outgoing transfers, and past swaps for {shortenAddress(wallet.solanaWallet?.address)}.</span>
                   </div>
                   <span>{walletHistoryItems.length} entries</span>
+                </div>
+                <div className="wallet-history-summary">
+                  <div className="wallet-history-summary__card">
+                    <span>Incoming</span>
+                    <strong>{walletHistoryStats.incoming}</strong>
+                  </div>
+                  <div className="wallet-history-summary__card">
+                    <span>Outgoing</span>
+                    <strong>{walletHistoryStats.outgoing}</strong>
+                  </div>
+                  <div className="wallet-history-summary__card">
+                    <span>Swaps</span>
+                    <strong>{walletHistoryStats.swaps}</strong>
+                  </div>
                 </div>
                 <div className="wallet-history-status">
                   {isHistoryLoading ? 'Loading...' : walletHistoryStatus}
@@ -1783,7 +1817,12 @@ export default function App() {
               <div className="wallet-holdings">
                 <div className="wallet-holdings__header">
                   <strong>Held assets</strong>
-                  <span>{heldAssets.length} positions</span>
+                  <div className="wallet-holdings__stats">
+                    <span>{heldAssets.length} positions</span>
+                    <span className={holdingsDailyChangeValue >= 0 ? 'positive' : 'negative'}>
+                      24h growth {formatCurrency(holdingsDailyChangeValue)}
+                    </span>
+                  </div>
                 </div>
                 {wallet.authenticated ? (
                   heldAssets.length > 0 ? (

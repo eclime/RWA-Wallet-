@@ -52,9 +52,10 @@ button {
   min-height: calc(100vh - 48px);
   border-radius: 30px;
   padding: 24px 20px;
-  background: linear-gradient(180deg, #10213a 0%, #152d4b 100%);
-  color: #fdf6ef;
-  box-shadow: 0 28px 80px rgba(11, 30, 54, 0.28);
+  background: linear-gradient(180deg, rgba(255, 253, 251, 0.94) 0%, rgba(243, 246, 250, 0.96) 100%);
+  color: #14253f;
+  border: 1px solid rgba(20, 37, 63, 0.08);
+  box-shadow: 0 18px 60px rgba(20, 37, 63, 0.08);
   display: grid;
   grid-template-rows: auto auto 1fr;
   gap: 24px;
@@ -99,7 +100,7 @@ button {
 
 .rail .eyebrow,
 .topbar .eyebrow {
-  color: #c7d3e2;
+  color: #9e6a61;
 }
 
 .rail-menu {
@@ -127,14 +128,19 @@ button {
   align-self: end;
   border-radius: 22px;
   padding: 18px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(22, 49, 83, 0.08), rgba(33, 70, 110, 0.1));
+  border: 1px solid rgba(20, 37, 63, 0.08);
 }
 
 .rail-note strong,
 .header-card strong,
 .topbar h1 {
   color: #fffaf7;
+}
+
+.rail-brand strong,
+.rail-brand div:not(.eyebrow) {
+  color: #14253f;
 }
 
 .layout {
@@ -914,6 +920,7 @@ button {
   border-top: 1px solid rgba(20, 37, 63, 0.08);
   border-bottom: 1px solid rgba(20, 37, 63, 0.08);
   padding: 18px 0;
+  align-items: flex-start;
 }
 
 .buy-route__text {
@@ -921,6 +928,8 @@ button {
   align-items: baseline;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .buy-route-error {
@@ -937,6 +946,8 @@ button {
   color: #1877f2;
   font-weight: 700;
   cursor: pointer;
+  flex: 0 0 auto;
+  align-self: center;
 }
 
 .buy-route__badge:disabled {
@@ -1158,6 +1169,10 @@ button {
   width: 100%;
 }
 
+.wallet-action-buttons > .secondary-button {
+  margin-left: auto;
+}
+
 .wallet-action-panel,
 .wallet-receive-card,
 .wallet-send-card,
@@ -1269,6 +1284,31 @@ button {
 
 .wallet-history-screen__header span {
   color: #73839a;
+}
+
+.wallet-history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wallet-history-summary__card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(20, 37, 63, 0.08);
+  border-radius: 18px;
+  background: #f9fbff;
+  padding: 14px 16px;
+}
+
+.wallet-history-summary__card span {
+  color: #73839a;
+  font-size: 0.88rem;
+}
+
+.wallet-history-summary__card strong {
+  color: #17233e;
+  font-size: 1.15rem;
 }
 
 .wallet-history-list--screen {
@@ -1433,6 +1473,13 @@ button {
   gap: 12px;
 }
 
+.wallet-holdings__stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .wallet-holdings__list {
   display: grid;
   gap: 12px;
@@ -1507,13 +1554,12 @@ button {
 
 @media (max-width: 1200px) {
   .shell {
+    padding-bottom: 108px;
     grid-template-columns: 1fr;
   }
 
   .rail {
-    position: relative;
-    top: 0;
-    min-height: auto;
+    display: none;
   }
 
   .topbar,
@@ -1539,6 +1585,49 @@ button {
   .swap-terminal-grid,
   .terminal-preview {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    left: 24px;
+    right: 24px;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 10px;
+    border-radius: 24px;
+    border: 1px solid rgba(20, 37, 63, 0.08);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 22px 50px rgba(20, 37, 63, 0.18);
+    backdrop-filter: blur(18px);
+  }
+
+  .mobile-tabbar__button {
+    min-height: 62px;
+    border: none;
+    border-radius: 18px;
+    background: transparent;
+    color: #6b7b90;
+    display: grid;
+    place-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+
+  .mobile-tabbar__button.active {
+    background: linear-gradient(135deg, rgba(111, 29, 27, 0.92), rgba(183, 75, 63, 0.8));
+    color: #fff8f4;
+    box-shadow: 0 16px 28px rgba(111, 29, 27, 0.18);
+  }
+
+  .mobile-tabbar__button svg {
+    width: 20px;
+    height: 20px;
   }
 
   .terminal-leg__body {
@@ -1577,18 +1666,18 @@ button {
 
   .asset-detail__header {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 14px;
   }
 
   .asset-detail__header .price-pill--button {
-    order: 1;
-    justify-self: start;
+    order: 2;
+    justify-self: end;
   }
 
   .asset-detail__title {
-    order: 2;
+    order: 1;
     min-width: 0;
     justify-self: stretch;
   }
@@ -1644,9 +1733,10 @@ button {
 
   .mobile-explore-actions {
     display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: -2px;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    margin: 8px 0 14px;
   }
 
   .asset-list-panel--mobile-hidden,
@@ -1669,6 +1759,8 @@ button {
     gap: 8px;
     justify-content: flex-start;
     align-items: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
 
   .wallet-history-button {
@@ -1700,14 +1792,101 @@ button {
 
   .wallet-action-buttons > .secondary-button {
     flex: 0 0 auto;
+    margin-left: 0;
     min-width: 0;
     padding: 12px 18px;
     font-size: 0.94rem;
   }
 
+  .wallet-history-summary {
+    grid-template-columns: 1fr;
+  }
+
   .buy-route__text span {
     font-size: 0.82rem;
     line-height: 1.3;
+  }
+
+  .buy-card {
+    padding: 18px;
+    gap: 18px;
+  }
+
+  .buy-card__header {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .buy-card__header h5 {
+    font-size: 1.45rem;
+  }
+
+  .buy-card__actions {
+    gap: 6px;
+  }
+
+  .buy-leg__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .buy-token {
+    min-width: 0;
+  }
+
+  .buy-token strong,
+  .buy-token-select select {
+    font-size: 1.3rem;
+  }
+
+  .buy-amount {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .buy-amount input,
+  .buy-amount strong {
+    font-size: 2.35rem;
+    line-height: 1;
+  }
+
+  .buy-amount small {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.92rem;
+  }
+
+  .buy-leg__meta {
+    align-items: center;
+  }
+
+  .buy-leg__meta span {
+    min-width: 0;
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+
+  .buy-max-button {
+    flex: 0 0 auto;
+  }
+
+  .buy-route {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .buy-route__badge {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+  }
+
+  .buy-route-meta {
+    font-size: 0.88rem;
+    line-height: 1.35;
   }
 
   .swap-terminal-grid,
@@ -1741,45 +1920,8 @@ button {
   }
 
   .mobile-tabbar {
-    position: fixed;
     left: 14px;
     right: 14px;
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    z-index: 40;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    padding: 10px;
-    border-radius: 24px;
-    border: 1px solid rgba(20, 37, 63, 0.08);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 22px 50px rgba(20, 37, 63, 0.18);
-    backdrop-filter: blur(18px);
-  }
-
-  .mobile-tabbar__button {
-    min-height: 62px;
-    border: none;
-    border-radius: 18px;
-    background: transparent;
-    color: #6b7b90;
-    display: grid;
-    place-items: center;
-    gap: 6px;
-    font-size: 0.76rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
-  }
-
-  .mobile-tabbar__button.active {
-    background: linear-gradient(135deg, rgba(111, 29, 27, 0.92), rgba(183, 75, 63, 0.8));
-    color: #fff8f4;
-    box-shadow: 0 16px 28px rgba(111, 29, 27, 0.18);
-  }
-
-  .mobile-tabbar__button svg {
-    width: 20px;
-    height: 20px;
   }
 }

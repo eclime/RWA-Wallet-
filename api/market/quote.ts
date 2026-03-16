@@ -1,4 +1,4 @@
-import { fetchYahooQuotes } from '../../src/server/marketProxy';
+import { fetchYahooQuotes } from '../../src/server/marketProxy.js';
 
 export default async function handler(req: any, res: any) {
   try {

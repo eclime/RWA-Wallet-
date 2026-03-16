@@ -1,10 +1,10 @@
 import { config } from '../config';
 import type { Asset } from '../types';
-import type { Connection, Transaction } from '@solana/web3.js';
+import type { Connection, VersionedTransaction } from '@solana/web3.js';
 
 type SendableWallet = {
   sendTransaction?: (
-    transaction: Transaction,
+    transaction: VersionedTransaction,
     connection: Connection,
     options?: {
       skipPreflight?: boolean;
@@ -70,6 +70,7 @@ export async function sendWalletAsset({
   amount: string;
 }) {
   const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js');
+  const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
   const {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     createAssociatedTokenAccountInstruction,
@@ -87,7 +88,7 @@ export async function sendWalletAsset({
   const senderPublicKey = new PublicKey(walletAddress);
   const recipientPublicKey = new PublicKey(recipient);
   async function buildTransaction() {
-    const transaction = new Transaction();
+    const instructions = [];
 
     if (asset.symbol === 'SOL') {
       const lamports = Number(toAtomicAmount(amount, 9));
@@ -96,7 +97,7 @@ export async function sendWalletAsset({
         throw new Error('Enter a valid SOL amount to send.');
       }
 
-      transaction.add(
+      instructions.push(
         SystemProgram.transfer({
           fromPubkey: senderPublicKey,
           toPubkey: recipientPublicKey,
@@ -119,10 +120,16 @@ export async function sendWalletAsset({
         programId,
         ASSOCIATED_TOKEN_PROGRAM_ID,
       );
+      const senderTokenAccountInfo = await connection.getAccountInfo(senderTokenAccount);
+
+      if (!senderTokenAccountInfo) {
+        throw new Error(`Your wallet does not have a ${asset.symbol} token account yet.`);
+      }
+
       const recipientTokenAccountInfo = await connection.getAccountInfo(recipientTokenAccount);
 
       if (!recipientTokenAccountInfo) {
-        transaction.add(
+        instructions.push(
           createAssociatedTokenAccountInstruction(
             senderPublicKey,
             recipientTokenAccount,
@@ -134,7 +141,7 @@ export async function sendWalletAsset({
         );
       }
 
-      transaction.add(
+      instructions.push(
         createTransferCheckedInstruction(
           senderTokenAccount,
           mint,
@@ -148,9 +155,13 @@ export async function sendWalletAsset({
       );
     }
 
-    const latestBlockhash = await connection.getLatestBlockhash('finalized');
-    transaction.feePayer = senderPublicKey;
-    transaction.recentBlockhash = latestBlockhash.blockhash;
+    const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+    const message = new TransactionMessage({
+      payerKey: senderPublicKey,
+      recentBlockhash: latestBlockhash.blockhash,
+      instructions,
+    }).compileToV0Message();
+    const transaction = new VersionedTransaction(message);
 
     return { transaction, latestBlockhash };
   }
@@ -158,8 +169,8 @@ export async function sendWalletAsset({
   async function submitWithFreshBlockhash() {
     const { transaction, latestBlockhash } = await buildTransaction();
     const signature = await sendTransaction(transaction, connection, {
-      skipPreflight: false,
-      maxRetries: 3,
+      skipPreflight: true,
+      maxRetries: 2,
     });
 
     await connection.confirmTransaction(
