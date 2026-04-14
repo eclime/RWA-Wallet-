@@ -2,12 +2,11 @@ import { useMemo } from 'react';
 import { useLogin, usePrivy, useSolanaWallets, useWallets } from '@privy-io/react-auth';
 
 export function useEmbeddedSolanaWallet() {
-  const { ready, authenticated, logout, user, exportWallet } = usePrivy();
+  const { ready, authenticated, logout, user } = usePrivy();
   const { wallets } = useWallets();
   const { login } = useLogin();
   const {
     wallets: solanaWallets,
-    createWallet,
     ready: solanaReady,
   } = useSolanaWallets();
 
@@ -21,8 +20,6 @@ export function useEmbeddedSolanaWallet() {
     authenticated,
     login,
     logout,
-    createWallet,
-    exportWallet,
     user,
     solanaWallet,
     evmWallet: wallets.find(

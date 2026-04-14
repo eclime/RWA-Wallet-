@@ -6,6 +6,7 @@ import {
   ChevronDown,
   X,
   Copy,
+  LogOut,
   Droplets,
   Landmark,
   ArrowUpRight,
@@ -26,6 +27,15 @@ import { useEmbeddedSolanaWallet } from './services/privy';
 import { fetchLiveXStockPrices, fetchXStockHistory } from './services/pricing';
 import { fetchRaydiumPairYield } from './services/raydium';
 import { fetchWalletHistory, type WalletHistoryItem } from './services/history';
+import {
+  createActiveMnemonicWallet,
+  decryptMnemonicWallet,
+  encryptMnemonicWallet,
+  readStoredMnemonicWallet,
+  writeStoredMnemonicWallet,
+  type ActiveMnemonicWallet,
+} from './services/localMnemonicWallet';
+import { createSolanaMnemonicWallet, type SolanaMnemonicWallet } from './services/mnemonic';
 import { applyStableWalletBalances } from './services/wallet';
 import type { Asset, AssetCategory } from './types';
 import type { HistoryPoint, HistoryRange } from './services/pricing';
@@ -198,6 +208,19 @@ export default function App() {
   const [isBuyDirectionFlipped, setIsBuyDirectionFlipped] = useState(false);
   const [mobileExploreView, setMobileExploreView] = useState<'list' | 'chart' | 'swap'>('list');
   const [copyStatus, setCopyStatus] = useState('Copy');
+  const [isWalletSettingsOpen, setIsWalletSettingsOpen] = useState(false);
+  const [isWalletBackupPromptOpen, setIsWalletBackupPromptOpen] = useState(false);
+  const [walletBackupStatus, setWalletBackupStatus] = useState('');
+  const [mnemonicWallet, setMnemonicWallet] = useState<ActiveMnemonicWallet | null>(null);
+  const [pendingMnemonicWallet, setPendingMnemonicWallet] = useState<SolanaMnemonicWallet | null>(null);
+  const [currentMnemonicPhrase, setCurrentMnemonicPhrase] = useState('');
+  const [walletPassword, setWalletPassword] = useState('');
+  const [walletPasswordConfirm, setWalletPasswordConfirm] = useState('');
+  const [isWalletPasswordPromptOpen, setIsWalletPasswordPromptOpen] = useState(false);
+  const [walletPasswordStatus, setWalletPasswordStatus] = useState('');
+  const [walletRevealPhrase, setWalletRevealPhrase] = useState('');
+  const [walletRevealPassword, setWalletRevealPassword] = useState('');
+  const [walletRestoreMode, setWalletRestoreMode] = useState<'unlock' | 'reveal'>('unlock');
   const [swapAmount, setSwapAmount] = useState('100');
   const [swapStatus, setSwapStatus] = useState('Enter an amount to preview the Jupiter route.');
   const [estimatedOutput, setEstimatedOutput] = useState(0);
@@ -227,10 +250,31 @@ export default function App() {
   const [preferredStableSymbol, setPreferredStableSymbol] = useState<'USDT' | 'USDC'>('USDT');
   const wallet = useEmbeddedSolanaWallet();
   const marketAssetsRef = useRef(marketAssets);
+  const walletSettingsRef = useRef<HTMLDivElement | null>(null);
+  const activeSolanaWallet = mnemonicWallet ?? wallet.solanaWallet ?? null;
+  const walletUserId = wallet.user?.id ?? '';
+  const hasStoredMnemonicWallet = walletUserId ? Boolean(readStoredMnemonicWallet(walletUserId)) : false;
 
   useEffect(() => {
     marketAssetsRef.current = marketAssets;
   }, [marketAssets]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!walletSettingsRef.current?.contains(event.target as Node)) {
+        setIsWalletSettingsOpen(false);
+      }
+    }
+
+    if (!isWalletSettingsOpen) {
+      return;
+    }
+
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [isWalletSettingsOpen]);
 
   const selectedAsset =
     marketAssets.find((asset) => asset.id === selectedAssetId) ?? marketAssets[0];
@@ -397,8 +441,8 @@ export default function App() {
     sendableAssets[0] ??
     stableAssets.find((asset) => asset.symbol === 'SOL') ??
     marketAssets[0];
-  const publicKey = wallet.solanaWallet?.address ?? 'Connect wallet to reveal public key';
-  const shortPublicKey = shortenAddress(wallet.solanaWallet?.address);
+  const publicKey = activeSolanaWallet?.address ?? 'Connect wallet to reveal public key';
+  const shortPublicKey = shortenAddress(activeSolanaWallet?.address);
   const walletHistoryStats = useMemo(() => {
     const incoming = walletHistoryItems.filter((item) => item.kind === 'receive').length;
     const outgoing = walletHistoryItems.filter((item) => item.kind === 'send').length;
@@ -474,6 +518,44 @@ export default function App() {
     }
   }, [walletActionView]);
 
+  useEffect(() => {
+    if (!wallet.authenticated) {
+      setMnemonicWallet(null);
+      setPendingMnemonicWallet(null);
+      setCurrentMnemonicPhrase('');
+      setIsWalletPasswordPromptOpen(false);
+      setWalletRevealPhrase('');
+      setWalletRevealPassword('');
+      return;
+    }
+
+    if (!walletUserId || mnemonicWallet || !hasStoredMnemonicWallet) {
+      return;
+    }
+
+    setWalletRestoreMode('unlock');
+    setWalletPassword('');
+    setWalletPasswordStatus('');
+    setIsWalletPasswordPromptOpen(true);
+  }, [hasStoredMnemonicWallet, mnemonicWallet, wallet.authenticated, walletUserId]);
+
+  async function handleCreateMnemonicWallet() {
+    setWalletBackupStatus('');
+
+    try {
+      const nextWallet = createSolanaMnemonicWallet();
+      setPendingMnemonicWallet(nextWallet);
+      setCurrentMnemonicPhrase(nextWallet.mnemonic);
+      setWalletPassword('');
+      setWalletPasswordConfirm('');
+      setIsWalletBackupPromptOpen(true);
+    } catch (error) {
+      setConnectError(
+        error instanceof Error ? error.message : 'Unable to generate a recovery phrase right now.',
+      );
+    }
+  }
+
   async function handleConnectWallet() {
     if (!hasPrivyConfig || isConnectingWallet) {
       return;
@@ -493,9 +575,24 @@ export default function App() {
         return;
       }
 
-      if (!wallet.solanaWallet?.address) {
-        await wallet.createWallet();
+      if (activeSolanaWallet?.address) {
+        return;
       }
+
+      if (pendingMnemonicWallet) {
+        setIsWalletBackupPromptOpen(true);
+        return;
+      }
+
+      if (hasStoredMnemonicWallet) {
+        setWalletRestoreMode('unlock');
+        setWalletPassword('');
+        setWalletPasswordStatus('');
+        setIsWalletPasswordPromptOpen(true);
+        return;
+      }
+
+      await handleCreateMnemonicWallet();
     } catch (error) {
       setConnectError(error instanceof Error ? error.message : 'Unable to connect your Solana wallet.');
     } finally {
@@ -503,17 +600,140 @@ export default function App() {
     }
   }
 
+  async function handleRevealRecoveryPhrase() {
+    if (currentMnemonicPhrase) {
+      setWalletBackupStatus('');
+      setIsWalletSettingsOpen(false);
+      setWalletRestoreMode('reveal');
+      setWalletRevealPhrase(currentMnemonicPhrase);
+      setWalletPasswordStatus('');
+      setIsWalletPasswordPromptOpen(true);
+      return;
+    }
+
+    if (pendingMnemonicWallet) {
+      setWalletBackupStatus('');
+      setIsWalletSettingsOpen(false);
+      setIsWalletBackupPromptOpen(true);
+      return;
+    }
+
+    if (!walletUserId || !hasStoredMnemonicWallet) {
+      setWalletBackupStatus('Save this wallet on the current device first, then you can reveal the recovery phrase.');
+      setIsWalletSettingsOpen(false);
+      setIsWalletBackupPromptOpen(true);
+      return;
+    }
+
+    setWalletBackupStatus('');
+    setIsWalletSettingsOpen(false);
+    setWalletRevealPhrase('');
+    setWalletRevealPassword('');
+    setWalletRestoreMode('reveal');
+    setWalletPasswordStatus('');
+    setIsWalletPasswordPromptOpen(true);
+  }
+
+  async function handleSaveMnemonicWallet() {
+    if (!pendingMnemonicWallet || !walletUserId) {
+      setWalletBackupStatus('Sign in first so this device can encrypt your wallet.');
+      return;
+    }
+
+    if (walletPassword.trim().length < 8) {
+      setWalletBackupStatus('Choose a device password with at least 8 characters.');
+      return;
+    }
+
+    if (walletPassword !== walletPasswordConfirm) {
+      setWalletBackupStatus('The device passwords do not match yet.');
+      return;
+    }
+
+    setWalletBackupStatus('');
+
+    try {
+      const encryptedWallet = await encryptMnemonicWallet(
+        {
+          mnemonic: pendingMnemonicWallet.mnemonic,
+          privateKey: pendingMnemonicWallet.privateKey,
+        },
+        walletPassword,
+      );
+
+      writeStoredMnemonicWallet(walletUserId, encryptedWallet);
+      setMnemonicWallet(createActiveMnemonicWallet(pendingMnemonicWallet.privateKey));
+      setPendingMnemonicWallet(null);
+      setWalletPassword('');
+      setWalletPasswordConfirm('');
+      setIsWalletBackupPromptOpen(false);
+      setConnectError('');
+    } catch (error) {
+      setWalletBackupStatus(
+        error instanceof Error ? error.message : 'Unable to secure your wallet on this device.',
+      );
+    }
+  }
+
+  async function handleUnlockMnemonicWallet() {
+    if (!walletUserId) {
+      setWalletPasswordStatus('Sign in first to unlock the wallet on this device.');
+      return;
+    }
+
+    const storedWallet = readStoredMnemonicWallet(walletUserId);
+    if (!storedWallet) {
+      setWalletPasswordStatus('No encrypted wallet was found on this device.');
+      return;
+    }
+
+    if (walletRestoreMode === 'reveal' && !walletRevealPassword.trim()) {
+      setWalletPasswordStatus('Enter your device password to reveal the recovery phrase.');
+      return;
+    }
+
+    if (walletRestoreMode === 'unlock' && !walletPassword.trim()) {
+      setWalletPasswordStatus('Enter your device password to unlock the wallet.');
+      return;
+    }
+
+    setWalletPasswordStatus('');
+
+    try {
+      const decryptedWallet = await decryptMnemonicWallet(
+        storedWallet,
+        walletRestoreMode === 'reveal' ? walletRevealPassword : walletPassword,
+      );
+
+      if (walletRestoreMode === 'reveal') {
+        setWalletRevealPhrase(decryptedWallet.mnemonic);
+        setCurrentMnemonicPhrase(decryptedWallet.mnemonic);
+        return;
+      }
+
+      setMnemonicWallet(createActiveMnemonicWallet(decryptedWallet.privateKey));
+      setCurrentMnemonicPhrase(decryptedWallet.mnemonic);
+      setWalletPassword('');
+      setIsWalletPasswordPromptOpen(false);
+      setConnectError('');
+    } catch (error) {
+      setWalletPasswordStatus(
+        error instanceof Error ? error.message : 'That password could not unlock this wallet.',
+      );
+    }
+  }
+
   useEffect(() => {
     let ignore = false;
 
     async function loadReceiveQr() {
-      if (!wallet.solanaWallet?.address) {
+      if (!activeSolanaWallet?.address) {
         setReceiveQrCode('');
         return;
       }
 
       try {
-        const qrCode = await QRCode.toDataURL(wallet.solanaWallet.address, {
+        const qrCode = await QRCode.toDataURL(activeSolanaWallet.address, {
           margin: 1,
           width: 220,
           color: {
@@ -537,7 +757,7 @@ export default function App() {
     return () => {
       ignore = true;
     };
-  }, [wallet.solanaWallet?.address]);
+  }, [activeSolanaWallet?.address]);
 
   useEffect(() => {
     if (selectedAsset.category !== 'stables') {
@@ -556,8 +776,8 @@ export default function App() {
     async function loadLivePrices() {
       try {
         const liveAssets = await fetchLiveXStockPrices(seedAssets);
-        const mergedAssets = wallet.solanaWallet?.address
-          ? await applyStableWalletBalances(wallet.solanaWallet.address, liveAssets)
+        const mergedAssets = activeSolanaWallet?.address
+          ? await applyStableWalletBalances(activeSolanaWallet.address, liveAssets)
           : liveAssets;
 
         if (ignore) {
@@ -571,8 +791,8 @@ export default function App() {
           return;
         }
 
-        const fallbackAssets = wallet.solanaWallet?.address
-          ? await applyStableWalletBalances(wallet.solanaWallet.address, seedAssets).catch(() => seedAssets)
+        const fallbackAssets = activeSolanaWallet?.address
+          ? await applyStableWalletBalances(activeSolanaWallet.address, seedAssets).catch(() => seedAssets)
           : seedAssets;
 
         setMarketAssets(fallbackAssets);
@@ -587,13 +807,13 @@ export default function App() {
     return () => {
       ignore = true;
     };
-  }, [wallet.solanaWallet?.address]);
+  }, [activeSolanaWallet?.address]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadWalletBalances() {
-      if (!wallet.solanaWallet?.address) {
+      if (!activeSolanaWallet?.address) {
         setMarketAssets((currentAssets) =>
           currentAssets.map((asset) =>
             ({ ...asset, balance: 0, value: 0 })
@@ -604,7 +824,7 @@ export default function App() {
 
       try {
         const assetsWithBalances = await applyStableWalletBalances(
-          wallet.solanaWallet.address,
+          activeSolanaWallet.address,
           marketAssetsRef.current,
         );
 
@@ -627,7 +847,7 @@ export default function App() {
     return () => {
       ignore = true;
     };
-  }, [wallet.solanaWallet?.address]);
+  }, [activeSolanaWallet?.address]);
 
   useEffect(() => {
     let ignore = false;
@@ -668,7 +888,7 @@ export default function App() {
       return;
     }
 
-    const walletAddress = wallet.solanaWallet?.address;
+    const walletAddress = activeSolanaWallet?.address;
 
     if (!walletAddress) {
       setWalletHistoryItems([]);
@@ -711,7 +931,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeNav, wallet.solanaWallet?.address, walletActionView]);
+  }, [activeNav, activeSolanaWallet?.address, walletActionView]);
 
   useEffect(() => {
     let ignore = false;
@@ -767,12 +987,19 @@ export default function App() {
 
   const sendAmountNumber = Number(sendAmountValue) || 0;
   const isSendAmountInvalid = sendAmountValue.trim().length > 0 && (!Number.isFinite(sendAmountNumber) || sendAmountNumber <= 0);
-  const isSendBalanceInsufficient = sendAmountNumber > 0 && selectedSendAsset ? sendAmountNumber > selectedSendAsset.balance : false;
+  const sendSolReserve =
+    selectedSendAsset?.symbol === 'SOL'
+      ? 0.00001
+      : 0;
+  const availableSendBalance = selectedSendAsset
+    ? Math.max(selectedSendAsset.balance - sendSolReserve, 0)
+    : 0;
+  const isSendBalanceInsufficient = sendAmountNumber > 0 && selectedSendAsset ? sendAmountNumber > availableSendBalance : false;
   const sendPreviewAmount =
     sendAmountValue.trim().length > 0 && Number.isFinite(sendAmountNumber) && sendAmountNumber > 0
       ? sendAmountNumber.toFixed(selectedSendAsset.symbol === 'SOL' ? 6 : Math.min(selectedSendAsset.tokenDecimals ?? 6, 6))
       : null;
-  const sendValidationMessage = !wallet.solanaWallet?.address
+  const sendValidationMessage = !activeSolanaWallet?.address
     ? 'Connect your wallet to send assets.'
     : !sendableAssets.length
       ? 'No wallet assets are available to send yet.'
@@ -781,13 +1008,13 @@ export default function App() {
         : isSendAmountInvalid
           ? 'Enter a valid amount to send.'
           : isSendBalanceInsufficient
-            ? `Insufficient ${selectedSendAsset.symbol} balance. Available ${selectedSendAsset.balance.toFixed(
+            ? `Insufficient ${selectedSendAsset.symbol} balance. Available ${availableSendBalance.toFixed(
                 selectedSendAsset.symbol === 'SOL' ? 6 : 4,
-              )} ${selectedSendAsset.symbol}.`
+              )} ${selectedSendAsset.symbol}${selectedSendAsset.symbol === 'SOL' ? ' after reserving network fees.' : '.'}`
             : '';
 
   async function handleSendAsset() {
-    if (!wallet.solanaWallet?.address || !selectedSendAsset) {
+    if (!activeSolanaWallet?.address || !selectedSendAsset) {
       setSendStatus('Connect your wallet to send assets.');
       return;
     }
@@ -803,14 +1030,14 @@ export default function App() {
     try {
       const { sendWalletAsset } = await import('./services/send');
       const { signature } = await sendWalletAsset({
-        walletAddress: wallet.solanaWallet.address,
-        wallet: wallet.solanaWallet,
+        walletAddress: activeSolanaWallet.address,
+        wallet: activeSolanaWallet,
         asset: selectedSendAsset,
         recipient: sendAddress.trim(),
         amount: sendAmountValue,
       });
 
-      const refreshedAssets = await applyStableWalletBalances(wallet.solanaWallet.address, marketAssets).catch(
+      const refreshedAssets = await applyStableWalletBalances(activeSolanaWallet.address, marketAssets).catch(
         () => marketAssets,
       );
       setMarketAssets(refreshedAssets);
@@ -908,7 +1135,7 @@ export default function App() {
   }, [buySendAsset.balance, buySendAsset.symbol, selectedAsset.category, swapAmount]);
 
   async function handleSwapSubmit() {
-    if (!wallet.authenticated || !wallet.solanaWallet?.address) {
+    if (!wallet.authenticated || !activeSolanaWallet?.address) {
       await handleConnectWallet();
       return;
     }
@@ -928,11 +1155,15 @@ export default function App() {
 
     try {
       const { signature } = await executeJupiterSwap({
-        walletAddress: wallet.solanaWallet.address,
+        walletAddress: activeSolanaWallet.address,
         quote: swapQuote,
-        wallet: wallet.solanaWallet,
+        wallet: activeSolanaWallet,
       });
 
+      const refreshedAssets = await applyStableWalletBalances(activeSolanaWallet.address, marketAssets).catch(
+        () => marketAssets,
+      );
+      setMarketAssets(refreshedAssets);
       setSwapStatus(`Jupiter swap confirmed on Solana. ${signature.slice(0, 8)}...`);
     } catch (error) {
       setSwapStatus(
@@ -1035,17 +1266,17 @@ export default function App() {
                 </button>
                 <button
                   className="icon-button"
-                  aria-label="Export embedded wallet"
-                  disabled={!wallet.authenticated || !wallet.solanaWallet?.address}
+                  aria-label="Reveal recovery phrase"
+                  disabled={!wallet.authenticated || !hasStoredMnemonicWallet}
                   onClick={() => {
-                    if (!wallet.solanaWallet?.address) {
+                    if (!hasStoredMnemonicWallet) {
                       return;
                     }
 
-                    void wallet.exportWallet({ address: wallet.solanaWallet.address });
+                    void handleRevealRecoveryPhrase();
                   }}
                 >
-                  <Copy size={16} />
+                  <ShieldCheck size={16} />
                 </button>
               </div>
             </div>
@@ -1065,7 +1296,7 @@ export default function App() {
                 </button>
               ) : null}
               <span className="header-pill">Mainnet Ready</span>
-              <p>Privy embedded wallet + Jupiter routing + Helius wallet data.</p>
+              <p>Privy email auth + self-custody Solana wallet + Jupiter routing + Helius wallet data.</p>
               <div className="ticker-row">
                 {topMovers.map((asset) => (
                   <div key={asset.id} className="ticker-pill">
@@ -1087,14 +1318,14 @@ export default function App() {
               <p className="eyebrow">Asset explorer</p>
               <h3>Toggle between stables, xStocks, and pre-stocks</h3>
             </div>
-            {wallet.authenticated && wallet.solanaWallet?.address ? (
-              <div className="connected-wallet-chip">
+            {wallet.authenticated && activeSolanaWallet?.address ? (
+              <div className="connected-wallet-chip" ref={walletSettingsRef}>
                 <span>{shortPublicKey}</span>
                 <button
                   className="connected-wallet-chip__copy"
                   aria-label="Copy Solana wallet address"
                   onClick={async () => {
-                    const address = wallet.solanaWallet?.address;
+                    const address = activeSolanaWallet?.address;
                     if (!address) {
                       return;
                     }
@@ -1107,6 +1338,43 @@ export default function App() {
                   <Copy size={15} />
                     {copyStatus === 'Copied' ? 'Copied' : 'Copy'}
                 </button>
+                <button
+                  className="wallet-logout-button"
+                  type="button"
+                  aria-label="Sign out"
+                  title="Sign out"
+                  onClick={() => {
+                    setIsWalletSettingsOpen(false);
+                    void wallet.logout();
+                  }}
+                >
+                  <LogOut size={14} />
+                </button>
+                <button
+                  className="wallet-settings-button"
+                  type="button"
+                  aria-label="Wallet settings"
+                  aria-expanded={isWalletSettingsOpen}
+                  onClick={() => setIsWalletSettingsOpen((value) => !value)}
+                >
+                  <Settings2 size={14} />
+                </button>
+                {isWalletSettingsOpen ? (
+                  <div className="wallet-settings-menu" onMouseDown={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="wallet-settings-menu__item"
+                      onClick={() => {
+                        setWalletBackupStatus('');
+                        void handleRevealRecoveryPhrase();
+                      }}
+                    >
+                      {hasStoredMnemonicWallet || pendingMnemonicWallet
+                        ? 'Reveal recovery phrase'
+                        : 'Save wallet to reveal phrase'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <button
@@ -1329,7 +1597,7 @@ export default function App() {
                             <path
                               d={chartPath}
                               fill="none"
-                              stroke="#142948"
+                              stroke="#0b6bff"
                               strokeWidth="4"
                               strokeLinecap="round"
                               strokeLinejoin="round"
@@ -1625,17 +1893,17 @@ export default function App() {
                     >
                       {walletActionView === 'history' ? <Undo2 size={16} /> : <History size={16} />}
                     </button>
-                    <div className="wallet-public-key__pill">
-                      <strong>{wallet.solanaWallet?.address ? shortenAddress(wallet.solanaWallet.address) : publicKey}</strong>
+                    <div className="wallet-public-key__pill" ref={walletSettingsRef}>
+                      <strong>{activeSolanaWallet?.address ? shortenAddress(activeSolanaWallet.address) : publicKey}</strong>
                       <button
                         className="wallet-public-key__copy"
-                        disabled={!wallet.solanaWallet?.address}
+                        disabled={!activeSolanaWallet?.address}
                         onClick={async () => {
-                          if (!wallet.solanaWallet?.address) {
+                          if (!activeSolanaWallet?.address) {
                             return;
                           }
 
-                          await navigator.clipboard.writeText(wallet.solanaWallet.address);
+                          await navigator.clipboard.writeText(activeSolanaWallet.address);
                           setCopyStatus('Copied');
                           window.setTimeout(() => setCopyStatus('Copy'), 1500);
                         }}
@@ -1643,10 +1911,47 @@ export default function App() {
                         <Copy size={18} />
                         {copyStatus}
                       </button>
+                      <button
+                        className="wallet-logout-button"
+                        type="button"
+                        aria-label="Sign out"
+                        title="Sign out"
+                        onClick={() => {
+                          setIsWalletSettingsOpen(false);
+                          void wallet.logout();
+                        }}
+                      >
+                        <LogOut size={14} />
+                      </button>
+                      <button
+                        className="wallet-settings-button"
+                        type="button"
+                        aria-label="Wallet settings"
+                        aria-expanded={isWalletSettingsOpen}
+                        onClick={() => setIsWalletSettingsOpen((value) => !value)}
+                      >
+                        <Settings2 size={14} />
+                      </button>
+                      {isWalletSettingsOpen ? (
+                        <div className="wallet-settings-menu wallet-settings-menu--wallet" onMouseDown={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="wallet-settings-menu__item"
+                            onClick={() => {
+                              setWalletBackupStatus('');
+                              void handleRevealRecoveryPhrase();
+                            }}
+                          >
+                            {hasStoredMnemonicWallet || pendingMnemonicWallet
+                              ? 'Reveal recovery phrase'
+                              : 'Save wallet to reveal phrase'}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                     <button
                       className={walletActionView === 'send' ? 'secondary-button active' : 'secondary-button'}
-                      disabled={!wallet.solanaWallet?.address}
+                      disabled={!activeSolanaWallet?.address}
                       onClick={() => setWalletActionView((view) => (view === 'send' ? null : 'send'))}
                     >
                       <ArrowUpRight size={16} />
@@ -1662,7 +1967,7 @@ export default function App() {
                 <div className="wallet-history-screen__header">
                   <div>
                     <strong>Transaction history</strong>
-                    <span>Incoming transfers, outgoing transfers, and past swaps for {shortenAddress(wallet.solanaWallet?.address)}.</span>
+                    <span>Incoming transfers, outgoing transfers, and past swaps for {shortenAddress(activeSolanaWallet?.address)}.</span>
                   </div>
                   <span>{walletHistoryItems.length} entries</span>
                 </div>
@@ -1858,6 +2163,165 @@ export default function App() {
 
         </section>
         )}
+
+        {isWalletBackupPromptOpen ? (
+          <div className="seed-phrase-modal" role="dialog" aria-modal="true" aria-labelledby="seed-phrase-title">
+            <div className="seed-phrase-modal__backdrop" onClick={() => setIsWalletBackupPromptOpen(false)} />
+            <div className="seed-phrase-modal__card">
+              <button
+                className="seed-phrase-modal__close"
+                type="button"
+                aria-label="Close wallet backup prompt"
+                onClick={() => setIsWalletBackupPromptOpen(false)}
+              >
+                <X size={16} />
+              </button>
+              <p className="eyebrow">Wallet backup</p>
+              <h3 id="seed-phrase-title">Write down your recovery phrase</h3>
+              <p>
+                This wallet is generated in your browser from a real Solana mnemonic. Write the phrase down offline first. Saving it on this device with a password is optional.
+              </p>
+              {pendingMnemonicWallet ? (
+                <div className="seed-phrase-grid" aria-label="Recovery phrase">
+                  {pendingMnemonicWallet.mnemonic.split(' ').map((word, index) => (
+                    <div key={`${word}-${index}`} className="seed-phrase-grid__item">
+                      <span>{index + 1}</span>
+                      <strong>{word}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="seed-phrase-modal__optional">
+                <strong>Optional: save on this device</strong>
+                <span>Add a password only if you want this browser to remember the wallet and let you reveal the phrase again later.</span>
+              </div>
+              <div className="seed-phrase-modal__field-group">
+                <label className="seed-phrase-modal__field">
+                  <span>Device password</span>
+                  <input
+                    type="password"
+                    value={walletPassword}
+                    onChange={(event) => setWalletPassword(event.target.value)}
+                    placeholder="At least 8 characters"
+                  />
+                </label>
+                <label className="seed-phrase-modal__field">
+                  <span>Confirm password</span>
+                  <input
+                    type="password"
+                    value={walletPasswordConfirm}
+                    onChange={(event) => setWalletPasswordConfirm(event.target.value)}
+                    placeholder="Repeat password"
+                  />
+                </label>
+              </div>
+              <div className="seed-phrase-modal__note">
+                <strong>Important</strong>
+                <span>Never put this phrase in chat, screenshots, cloud notes, or analytics. Skipping the password only means this browser will not remember it after the session ends.</span>
+              </div>
+              {walletBackupStatus ? <div className="wallet-send-status">{walletBackupStatus}</div> : null}
+              <div className="seed-phrase-modal__actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setIsWalletBackupPromptOpen(false)}
+                >
+                  Later
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    void handleSaveMnemonicWallet();
+                  }}
+                >
+                  Save on this device
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {isWalletPasswordPromptOpen ? (
+          <div className="seed-phrase-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-password-title">
+            <div className="seed-phrase-modal__backdrop" onClick={() => setIsWalletPasswordPromptOpen(false)} />
+            <div className="seed-phrase-modal__card">
+              <button
+                className="seed-phrase-modal__close"
+                type="button"
+                aria-label="Close wallet password prompt"
+                onClick={() => {
+                  setIsWalletPasswordPromptOpen(false);
+                  setWalletRevealPhrase('');
+                }}
+              >
+                <X size={16} />
+              </button>
+              <p className="eyebrow">{walletRestoreMode === 'unlock' ? 'Unlock wallet' : 'Reveal phrase'}</p>
+              <h3 id="wallet-password-title">
+                {walletRestoreMode === 'unlock' ? 'Unlock your Solana wallet' : 'Reveal your recovery phrase'}
+              </h3>
+              <p>
+                {walletRestoreMode === 'unlock'
+                  ? 'Enter the device password you chose when this wallet was saved on this browser.'
+                  : 'Re-enter your device password before the recovery phrase is shown.'}
+              </p>
+              {walletRevealPhrase ? (
+                <div className="seed-phrase-grid" aria-label="Stored recovery phrase">
+                  {walletRevealPhrase.split(' ').map((word, index) => (
+                    <div key={`${word}-${index}`} className="seed-phrase-grid__item">
+                      <span>{index + 1}</span>
+                      <strong>{word}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <label className="seed-phrase-modal__field">
+                  <span>Device password</span>
+                  <input
+                    type="password"
+                    value={walletRestoreMode === 'unlock' ? walletPassword : walletRevealPassword}
+                    onChange={(event) => {
+                      if (walletRestoreMode === 'unlock') {
+                        setWalletPassword(event.target.value);
+                      } else {
+                        setWalletRevealPassword(event.target.value);
+                      }
+                    }}
+                    placeholder="Enter your password"
+                  />
+                </label>
+              )}
+              <div className="seed-phrase-modal__note">
+                <strong>Security</strong>
+                <span>The recovery phrase is stored encrypted on this device only and is decrypted locally in your browser when you enter the right password.</span>
+              </div>
+              {walletPasswordStatus ? <div className="wallet-send-status">{walletPasswordStatus}</div> : null}
+              <div className="seed-phrase-modal__actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setIsWalletPasswordPromptOpen(false);
+                    setWalletRevealPhrase('');
+                  }}
+                >
+                  Close
+                </button>
+                {!walletRevealPhrase ? (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => {
+                      void handleUnlockMnemonicWallet();
+                    }}
+                  >
+                    {walletRestoreMode === 'unlock' ? 'Unlock wallet' : 'Reveal phrase'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
       <nav className="mobile-tabbar" aria-label="Primary">
         <button

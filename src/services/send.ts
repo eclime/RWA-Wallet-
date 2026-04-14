@@ -69,7 +69,7 @@ export async function sendWalletAsset({
   recipient: string;
   amount: string;
 }) {
-  const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js');
+  const { Connection, PublicKey, SystemProgram } = await import('@solana/web3.js');
   const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
   const {
     ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -92,9 +92,15 @@ export async function sendWalletAsset({
 
     if (asset.symbol === 'SOL') {
       const lamports = Number(toAtomicAmount(amount, 9));
+      const balanceLamports = await connection.getBalance(senderPublicKey, 'confirmed');
+      const feeReserveLamports = 10_000;
 
       if (!Number.isFinite(lamports) || lamports <= 0) {
         throw new Error('Enter a valid SOL amount to send.');
+      }
+
+      if (lamports + feeReserveLamports > balanceLamports) {
+        throw new Error('Leave a small SOL balance for network fees before sending your full position.');
       }
 
       instructions.push(
@@ -169,7 +175,7 @@ export async function sendWalletAsset({
   async function submitWithFreshBlockhash() {
     const { transaction, latestBlockhash } = await buildTransaction();
     const signature = await sendTransaction(transaction, connection, {
-      skipPreflight: true,
+      skipPreflight: false,
       maxRetries: 2,
     });
 

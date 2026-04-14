@@ -185,7 +185,7 @@ export async function executeJupiterSwap({
   const transaction = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
 
   const signature = await wallet.sendTransaction(transaction, connection, {
-    skipPreflight: true,
+    skipPreflight: false,
     maxRetries: 2,
   });
 

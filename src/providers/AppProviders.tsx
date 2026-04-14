@@ -18,7 +18,7 @@ export function AppProviders({ children }: PropsWithChildren) {
           logo: undefined,
         },
         embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
+          createOnLogin: 'off',
           requireUserPasswordOnCreate: false,
           showWalletUIs: true,
         },

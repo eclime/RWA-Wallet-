@@ -34,7 +34,7 @@ export async function applyStableWalletBalances(address: string, baseAssets: Ass
     const uiAmount = account.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
 
     if (mint && typeof uiAmount === 'number') {
-      tokenBalances.set(mint, uiAmount);
+      tokenBalances.set(mint, (tokenBalances.get(mint) ?? 0) + uiAmount);
     }
   }
 
